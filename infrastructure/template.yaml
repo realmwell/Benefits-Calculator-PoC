@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DC Benefits Finder — Serverless Backend (Lambda + API Gateway + Bedrock)
+
+Parameters:
+  CorsOrigin:
+    Type: String
+    Default: '*'
+    Description: CORS allowed origin (set to CloudFront domain in production)
+  BudgetWarning:
+    Type: String
+    Default: '9'
+  BudgetHardStop:
+    Type: String
+    Default: '10'
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        CORS_ORIGIN: !Ref CorsOrigin
+        BUDGET_WARNING: !Ref BudgetWarning
+        BUDGET_HARD_STOP: !Ref BudgetHardStop
+
+Resources:
+  # ── Lambda Function ──────────────────────────────────────────────
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: dc-benefits-chat
+      Handler: chat_handler.handler
+      CodeUri: ../backend/lambda/
+      ReservedConcurrentExecutions: 10  # Cost protection: max 10 concurrent
+      Layers:
+        - !Ref FAISSLayer
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            # Bedrock access for Titan Embeddings and Claude Haiku
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0'
+            # Cost Explorer for budget check
+            - Effect: Allow
+              Action:
+                - ce:GetCostAndUsage
+              Resource: '*'
+      Events:
+        ChatApi:
+          Type: Api
+          Properties:
+            Path: /chat
+            Method: POST
+            RestApiId: !Ref ChatApiGateway
+        ChatApiOptions:
+          Type: Api
+          Properties:
+            Path: /chat
+            Method: OPTIONS
+            RestApiId: !Ref ChatApiGateway
+
+  # ── FAISS Lambda Layer ───────────────────────────────────────────
+  FAISSLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: dc-benefits-faiss-index
+      Description: FAISS index and chunk metadata for DC benefits corpus
+      ContentUri: ../backend/corpus/embeddings/
+      CompatibleRuntimes:
+        - python3.12
+
+  # ── API Gateway ──────────────────────────────────────────────────
+  ChatApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: dc-benefits-chat-api
+      StageName: prod
+      Cors:
+        AllowOrigin: !Sub "'${CorsOrigin}'"
+        AllowHeaders: "'Content-Type'"
+        AllowMethods: "'POST, OPTIONS'"
+      # Usage plan: throttle for cost protection
+      MethodSettings:
+        - HttpMethod: '*'
+          ResourcePath: '/*'
+          ThrottlingBurstLimit: 10
+          ThrottlingRateLimit: 10
+
+  # ── S3 Bucket for Frontend ───────────────────────────────────────
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'dc-benefits-finder-${AWS::AccountId}'
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ── CloudFront Distribution ──────────────────────────────────────
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+        DefaultCacheBehavior:
+          AllowedMethods: [GET, HEAD]
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          ForwardedValues:
+            QueryString: false
+        # SPA routing: serve index.html for 404s
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        PriceClass: PriceClass_100
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: DC Benefits Finder OAI
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+Outputs:
+  ChatApiUrl:
+    Description: Chat API endpoint URL
+    Value: !Sub 'https://${ChatApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/chat'
+  FrontendBucketName:
+    Description: S3 bucket for frontend assets
+    Value: !Ref FrontendBucket
+  CloudFrontDomain:
+    Description: CloudFront distribution domain
+    Value: !GetAtt FrontendDistribution.DomainName
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID
+    Value: !Ref FrontendDistribution

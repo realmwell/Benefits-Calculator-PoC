@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DC Benefits Finder — Budget Alarm and Cost Cap ($10/month)
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Default: Maxwell.greenberg@gmail.com
+    Description: Email for budget notifications
+  BudgetLimit:
+    Type: Number
+    Default: 10
+    Description: Monthly budget limit in USD
+
+Resources:
+  # ── Monthly Budget ───────────────────────────────────────────────
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: dc-benefits-finder-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref BudgetLimit
+          Unit: USD
+      NotificationsWithSubscribers:
+        # Alert at 80% ($8)
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+        # Alert at 90% ($9)
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 90
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+        # Hard stop at 100% ($10)
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+
+  # ── IAM Policy for Cost Cap ──────────────────────────────────────
+  # When budget exceeds $10, this deny-all policy is applied via Budget Action
+  # (Budget Actions must be configured in the console or via AWS CLI
+  #  as CloudFormation support for BudgetAction is limited)
+  CostCapDenyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: dc-benefits-finder-cost-cap-deny
+      Description: Deny all actions when monthly budget is exceeded
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Action:
+              - lambda:InvokeFunction
+              - execute-api:Invoke
+            Resource:
+              - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dc-benefits-chat'
+              - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*'
+
+Outputs:
+  BudgetName:
+    Description: Budget name for CLI reference
+    Value: !Ref MonthlyBudget
+  CostCapPolicyArn:
+    Description: ARN of the deny policy to attach via Budget Action
+    Value: !Ref CostCapDenyPolicy
