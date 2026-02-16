@@ -1,8 +1,8 @@
 # DC Benefits Finder — Session Handoff
 
-## What Was Built (All 5 Phases Complete)
+## What Was Built (All 5 Phases Complete + Thresholds Verified)
 
-This session rebuilt the repo from a generic U.S. benefits calculator PoC into a DC-specific Benefits Finder per the full project prompt. All code is committed and pushed to `claude/phases-1-3-mobile-NYKxV` on `realmwell/Benefits-Calculator-PoC`.
+This repo contains a DC-specific Benefits Finder: a web app helping DC residents discover government benefits they may qualify for. All code is on `claude/phases-1-3-mobile-NYKxV` at `realmwell/Benefits-Calculator-PoC`.
 
 ### Phase 1: Eligibility Engine
 - **14 DC benefit programs** with deterministic, client-side eligibility logic
@@ -34,7 +34,7 @@ This session rebuilt the repo from a generic U.S. benefits calculator PoC into a
 - **Corpus builder** (`backend/scripts/build_corpus.py`): Downloads 26 DC benefit source URLs, extracts text via BeautifulSoup, chunks into ~400-token passages with 50-token overlap, outputs JSONL
 - **Embeddings builder** (`backend/scripts/build_embeddings.py`): Embeds chunks via Bedrock Titan v2, builds FAISS IndexFlatIP (cosine similarity), outputs .faiss + metadata JSON
 - **Lambda handler** (`backend/lambda/chat_handler.py`): POST /chat endpoint with CORS, budget check via Cost Explorer, input validation
-- **RAG engine** (`backend/lambda/rag_engine.py`): Embed question → FAISS top-5 retrieval → prompt assembly → Bedrock Claude 3.5 Haiku → answer with source citations
+- **RAG engine** (`backend/lambda/rag_engine.py`): Embed question -> FAISS top-5 retrieval -> prompt assembly -> Bedrock Claude 3.5 Haiku -> answer with source citations
 - **Chat UI** (`frontend/src/components/chat/ChatPanel.tsx`): Graceful degradation when backend unavailable
 - **NOT YET RUN**: Corpus download and embedding generation require AWS credentials with Bedrock access
 
@@ -44,6 +44,19 @@ This session rebuilt the repo from a generic U.S. benefits calculator PoC into a
 - **CI/CD** (`.github/workflows/deploy.yml`): Build + type check + deploy to S3 + CloudFront invalidation
 - **README.md**: Architecture diagram, setup instructions, deployment guide, threshold update guide
 
+### Threshold Verification (completed)
+All 14 programs verified against official 2025 sources. Fixes applied and committed:
+
+| Fix | File | What Changed |
+|-----|------|-------------|
+| SNAP standard deduction | `data/snap.ts` | Updated from outdated 2-tier ($198/$213) to FY2025 4-tier ($204/$217/$254/$291) |
+| EITC max credits | `programs/eitc.ts` | 1-child: $4,213->$4,328; 2-child: $6,960->$7,152 |
+| EITC income limits | `programs/eitc.ts` | Updated 6 values (1/2/3+ children, single + married) from 2024->2025 tax year |
+| LIHEAP SMI table | `data/fpl.ts` | Replaced national 60% SMI with DC-specific values from DOEE (e.g. HH1: $42,180->$61,841) |
+| Child Care Subsidy | `programs/childCareSubsidy.ts` | Income limit 250%->300% FPL per DC's Oct 2023 expansion |
+
+**Confirmed correct (no changes needed):** FPL base/increment, SNAP allotments, Medicaid thresholds (children 319%, adults 215%, Alliance 200%), TANF, SSI ($967/$1,450), Unemployment ($444/wk, 26 wks), WIC (185% FPL), Paid Family Leave ($1,190/wk), Property Tax (Homestead $89,850, Schedule H $750 max), School Meals (130%/185% FPL), Kids Ride Free (ages 5-21).
+
 ## Current State
 
 | Check | Status |
@@ -51,6 +64,7 @@ This session rebuilt the repo from a generic U.S. benefits calculator PoC into a
 | TypeScript compilation | Clean (zero errors) |
 | Vite production build | Passes (311 KB JS, 6.5 KB CSS) |
 | Engine tests (4 personas) | All passing |
+| 2025 threshold verification | Complete — all 14 programs verified |
 | Git status | Clean, pushed to remote |
 
 ### Test Persona Results
@@ -62,16 +76,16 @@ This session rebuilt the repo from a generic U.S. benefits calculator PoC into a
 ## What's Left To Do
 
 ### Must-do before launch
-1. **Run the RAG corpus pipeline** — `cd backend/scripts && python build_corpus.py && python build_embeddings.py` (requires AWS credentials with Bedrock access in us-east-1)
+1. **Run the RAG corpus pipeline** — `cd backend/scripts && pip install requests beautifulsoup4 && python build_corpus.py && pip install boto3 faiss-cpu numpy && python build_embeddings.py` (requires AWS credentials with Bedrock access in us-east-1)
 2. **Deploy infrastructure** — `cd infrastructure && sam build && sam deploy --guided` (requires AWS account)
 3. **Set VITE_CHAT_API_URL** — After deploying, set this env var to the API Gateway URL and rebuild frontend
 4. **Upload frontend to S3** — `aws s3 sync frontend/dist/ s3://BUCKET --delete`
 5. **Configure GitHub secrets** — AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET, CF_DIST_ID for CI/CD
-6. **Set up AWS Budget Action** — The CloudFormation template creates the budget and deny policy, but the Budget Action (which automatically applies the deny policy when budget is exceeded) must be configured via console or CLI
+6. **Set up AWS Budget Action** — The CloudFormation template creates the budget and deny policy, but the Budget Action must be configured via console or CLI
 
 ### Should-do improvements
-7. **Verify all 2025 thresholds** — Cross-check FPL tables, SNAP allotments, EITC limits, TANF limits against current official sources. Some DC-specific thresholds (TANF income limits, LIHEAP SMI) are approximated.
-8. **Add edge case tests** — The test file covers 4 personas but the spec calls for per-program unit tests covering threshold boundaries, already-receiving, citizenship disqualifiers, elderly/disabled provisions
+7. **Update FPL to 2026** — 2026 guidelines published Jan 2026: base=$15,960 (was $15,650), increment=$5,680 (was $5,500). Update `data/fpl.ts` and reference table comment when ready.
+8. **Add edge case tests** — 4 personas pass but spec calls for per-program unit tests covering threshold boundaries, already-receiving, citizenship disqualifiers, elderly/disabled provisions
 9. **Cross-browser testing** — Only tested via Vite build; needs Safari, Firefox, mobile browser verification
 10. **Accessibility audit** — Has skip link, aria labels, focus management, but needs screen reader testing and color contrast verification
 
@@ -79,7 +93,30 @@ This session rebuilt the repo from a generic U.S. benefits calculator PoC into a
 11. **Substack post** — Defined in the project prompt but not yet drafted (`docs/substack-draft.md`)
 12. **Route 53 custom domain** — Optional, adds ~$0.50/month
 13. **Multi-language support** — Deferred per spec
-14. **RAG quality tests** — `tests/rag/` directory exists but no tests written yet (need deployed backend)
+14. **RAG quality tests** — `tests/rag/` directory exists but no tests written yet
+
+## RAG Pipeline Assessment
+
+The corpus builder and embeddings builder scripts are well-structured and ready to run. Key observations:
+
+- **build_corpus.py**: Downloads 26 URLs, extracts text via BeautifulSoup, chunks at ~400 tokens with 50-token overlap. Has rate limiting (1s per URL). Output: `backend/corpus/processed/all_chunks.jsonl`
+- **build_embeddings.py**: Reads JSONL, calls Bedrock Titan v2 for 1024-dim embeddings, builds FAISS IndexFlatIP. Rate limited at 0.1s per chunk. Falls back to zero vectors on error. Output: `backend/corpus/embeddings/benefits.faiss` + `chunks_metadata.json`
+- **Lambda handler**: Budget checks against Cost Explorer ($10 hard stop, $9 warning), validates input (non-empty, max 1000 chars), CORS support
+- **RAG engine**: Lazy-loads FAISS index on cold start, top-5 retrieval, prompt includes DC-specific system instructions
+
+**To run**: Need AWS credentials with `bedrock:InvokeModel` for `amazon.titan-embed-text-v2:0` and `anthropic.claude-3-5-haiku-20241022-v1:0` in us-east-1.
+
+## SAM Deployment Assessment
+
+The SAM template is production-ready with proper cost controls:
+
+- **Lambda**: Python 3.12, 512MB, 30s timeout, 10 concurrent max
+- **API Gateway**: POST /chat + OPTIONS, 10 req/sec throttle
+- **S3**: Private bucket with OAI, public access blocked
+- **CloudFront**: HTTPS redirect, SPA routing (404/403 -> index.html), PriceClass_100
+- **Budget**: Separate template with $10/month cap, 3 notification tiers, IAM deny policy
+
+**Note**: The FAISS layer (`FAISSLayer`) references `../backend/corpus/embeddings/` which must exist before `sam build`. Run the corpus/embeddings pipeline first.
 
 ## Key Files
 
@@ -88,8 +125,8 @@ frontend/
 ├── src/engine/                    # All eligibility logic (pure TS, no React)
 │   ├── types.ts                   # UserProfile, ProgramResult interfaces
 │   ├── eligibility.ts             # Orchestrator — runs all 14 checkers
-│   ├── data/fpl.ts                # 2025 FPL tables
-│   ├── data/snap.ts               # SNAP allotments, deductions
+│   ├── data/fpl.ts                # 2025 FPL tables + DC-specific 60% SMI
+│   ├── data/snap.ts               # SNAP allotments, deductions (FY2025)
 │   └── programs/                  # One file per program (14 files)
 ├── src/components/
 │   ├── questionnaire/             # Question definitions, screen renderer, progress
@@ -104,7 +141,7 @@ frontend/
 backend/
 ├── lambda/chat_handler.py         # Lambda entry point
 ├── lambda/rag_engine.py           # FAISS retrieval + Bedrock inference
-├── scripts/build_corpus.py        # Download + chunk DC benefit docs
+├── scripts/build_corpus.py        # Download + chunk DC benefit docs (26 URLs)
 └── scripts/build_embeddings.py    # Generate FAISS index via Titan v2
 
 infrastructure/
@@ -139,7 +176,15 @@ cd backend/scripts && pip install boto3 faiss-cpu numpy && python build_embeddin
 cd infrastructure && sam build && sam deploy --guided
 ```
 
+## Architecture Notes
+
+- **Frontend engine** is pure TypeScript with zero React dependencies — can be tested and reused independently
+- **All eligibility is deterministic and client-side** — no data leaves the browser for the questionnaire flow
+- **RAG chatbot is additive** — the app works fully without it (graceful degradation in ChatPanel)
+- **Cost protection is multi-layered**: Lambda concurrent limit (10), API Gateway throttle (10 req/sec), budget alarm ($10/month), deny-all IAM policy
+- **Every threshold has source URL comments** for annual verification and updates
+
 ## Git Info
 - **Repo:** `realmwell/Benefits-Calculator-PoC`
 - **Branch:** `claude/phases-1-3-mobile-NYKxV`
-- **Latest commit:** `feat: rebuild as DC Benefits Finder with all 5 phases`
+- **Latest commit:** `fix: correct 2025 benefit thresholds against official sources`
