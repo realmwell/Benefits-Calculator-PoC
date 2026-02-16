@@ -40,8 +40,11 @@ export function getMaxAllotment(householdSize: number): number {
  * Source: https://www.fns.usda.gov/snap/eligibility
  */
 export function getStandardDeduction(householdSize: number): number {
-  if (householdSize <= 3) return 198;
-  return 213; // 4+ persons
+  // Source: https://fns-prod.azureedge.us/sites/default/files/media/file/FY2025-Maximum-Allotments-Deductions.pdf
+  if (householdSize <= 3) return 204;
+  if (householdSize === 4) return 217;
+  if (householdSize === 5) return 254;
+  return 291; // 6+ persons
 }
 
 /**

@@ -49,21 +49,23 @@ export function getMonthlyFPLAtPercent(householdSize: number, percent: number): 
 
 /**
  * DC State Median Income (SMI) thresholds for LIHEAP.
- * 60% SMI by household size (FY2025 estimates).
- * Source: https://liheapch.acf.gov/profiles/DC.htm
+ * 60% SMI by household size (FY2026, effective Oct 2025).
+ * Source: https://doee.dc.gov/liheap
  *
- * These are approximate; actual values are set by HHS annually.
+ * DC-specific values — significantly higher than national 60% SMI.
+ * Updated annually; verify at https://liheapch.acf.gov/profiles/DC.htm
  */
 export const SMI_60_PERCENT: Record<number, number> = {
-  // Source: https://liheapch.acf.gov/profiles/DC.htm
-  1: 42180,
-  2: 55140,
-  3: 68100,
-  4: 81060,
-  5: 94020,
-  6: 106980,
-  7: 109404,
-  8: 111828,
+  // Source: https://doee.dc.gov/liheap (FY2026 DC-specific 60% SMI, effective Oct 2025)
+  // Note: DC has significantly higher SMI than national average
+  1: 61841,
+  2: 80869,
+  3: 99897,
+  4: 118926,
+  5: 137954,
+  6: 156982,
+  7: 160550,
+  8: 164117,
 };
 
 /**
@@ -73,5 +75,5 @@ export function getSMI60(householdSize: number): number {
   if (householdSize <= 0) return SMI_60_PERCENT[1];
   if (householdSize <= 8) return SMI_60_PERCENT[householdSize];
   // Extrapolate for larger households
-  return SMI_60_PERCENT[8] + (householdSize - 8) * 2424;
+  return SMI_60_PERCENT[8] + (householdSize - 8) * 3568;
 }

@@ -21,8 +21,8 @@ const SOURCE_URLS = [
  */
 const FEDERAL_EITC_MAX: Record<number, number> = {
   0: 649,
-  1: 4213,
-  2: 6960,
+  1: 4328,
+  2: 7152,
   3: 8046, // 3 or more
 };
 
@@ -33,15 +33,15 @@ const FEDERAL_EITC_MAX: Record<number, number> = {
 const EITC_INCOME_LIMITS = {
   single: {
     0: 19104,
-    1: 49084,
-    2: 55768,
-    3: 59899, // 3 or more
+    1: 50434,
+    2: 57310,
+    3: 61555, // 3 or more
   } as Record<number, number>,
   married: {
     0: 26214,
-    1: 56004,
-    2: 62688,
-    3: 66819, // 3 or more
+    1: 57554,
+    2: 64430,
+    3: 68675, // 3 or more
   } as Record<number, number>,
 };
 

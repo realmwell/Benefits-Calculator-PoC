@@ -93,13 +93,14 @@ export function checkChildCareSubsidy(profile: UserProfile): ProgramResult {
     reasoning.push('You are working or in school and have children who need care.');
   }
 
-  // Income test (approximately 250% FPL for initial eligibility)
+  // Income test (300% FPL for initial eligibility, expanded Oct 2023)
+  // Source: https://osse.dc.gov/childcaresubsidyfaq
   const annualIncome = profile.annualIncome || profile.grossMonthlyIncome * 12;
-  const incomeLimit = getFPLAtPercent(profile.householdSize, 250);
+  const incomeLimit = getFPLAtPercent(profile.householdSize, 300);
 
   if (!hasAutoEligibility && annualIncome > incomeLimit) {
     reasoning.push(
-      `Your annual income ($${annualIncome.toLocaleString()}) may exceed the child care subsidy income limit (approximately $${incomeLimit.toLocaleString()}).`
+      `Your annual income ($${annualIncome.toLocaleString()}) may exceed the child care subsidy income limit ($${incomeLimit.toLocaleString()} at 300% FPL).`
     );
     return {
       programId: 'child_care_subsidy',
